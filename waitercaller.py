@@ -2,7 +2,6 @@ from flask import Flask
 from flask import render_template
 from flask_login import LoginManager
 from flask_login import login_required
-from mockdbhelper import MockDBHelper as DBHelper
 from user import User
 from flask import redirect
 from flask import url_for
@@ -17,6 +16,11 @@ import datetime
 from forms import RegistrationForm
 from forms import LoginForm
 from forms import CreateTableForm
+
+if config.test
+ from mockdbhelper import MockDBHelper as DBHelper
+else:
+ from dbhelper import DBHelper
 
 DB = DBHelper()
 
@@ -77,7 +81,7 @@ def account_createtable():
     form = CreateTableForm(request.form)
     if form.validate():
         tableid = DB.add_table(form.tablenumber.data,current_user.get_id())
-        new_url = BH.shorten_url(config.base_url + "newrequest/" +tableid)
+        new_url = BH.shorten_url(config.base_url + "newrequest/" + str(tableid))
         DB.update_table(tableid, new_url)
         return redirect(url_for('account'))
     return render_template("account.html", createtableform=form,tables=DB.get_tables(current_user.get_id()))
