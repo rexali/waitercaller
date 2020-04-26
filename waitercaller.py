@@ -14,6 +14,9 @@ from flask_login import current_user
 import config
 from bitylhelper import BitlyHelper
 import datetime
+from forms import RegistrationForm
+from forms import LoginForm
+from forms import CreateTableForm
 
 DB = DBHelper()
 
@@ -28,18 +31,19 @@ login_manager = LoginManager(app)
 
 @app.route("/")
 def home():
-    return render_template("home.html")
+ return render_template("home.html",loginform=LoginForm(), registrationform=RegistrationForm())
 
 @app.route("/login", methods=["POST"])
 def login():
-    email = request.form.get("email")
-    password = request.form.get("password")
-    stored_user = DB.get_user(email)
-    if stored_user and PH.validate_password(password,stored_user['salt'], stored_user['hashed']):
-        user = User(email)
-        login_user(user, remember=True)
-        return redirect(url_for('account'))
-    return home()
+    form = LoginForm(request.form)
+    if form.validate():
+        stored_user = DB.get_user(form.loginemail.data)
+        if stored_user and PH.validate_password(form.loginpassword.data,stored_user['salt'], stored_user['hashed']):
+            user = User(form.loginemail.data)
+            login_user(user, remember=True)
+            return redirect(url_for('account'))
+        form.loginemail.errors.append("Email or password invalid")
+    return render_template("home.html", loginform=form,registrationform=RegistrationForm())
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -54,36 +58,36 @@ def logout():
 
 @app.route("/register", methods=["POST"])
 def register():
-    email = request.form.get("email")
-    pw1 = request.form.get("password")
-    pw2 = request.form.get("password2")
-    if not pw1 == pw2:
-        return redirect(url_for('home'))
-    if DB.get_user(email):
-        return redirect(url_for('home'))
-    salt = PH.get_salt()
-    hashed = PH.get_hash(pw1 + salt)
-    DB.add_user(email, salt, hashed)
-    return redirect(url_for('home'))
+    form = RegistrationForm(request.form)
+    if form.validate():
+        if DB.get_user(form.email.data):
+            form.email.errors.append("Email address already registered")
+            return render_template("home.html", loginform=LoginForm(),registrationform=form)
+        salt = PH.get_salt()
+        hashed = PH.get_hash(form.password2.data + salt)
+        DB.add_user(form.email.data, salt, hashed)
+        return render_template("home.html", loginform=LoginForm(),registrationform=form, onloadmessage="Registration successful.Please log in.")
+    return render_template("home.html", loginform=LoginForm(),registrationform=form)
+    
+    
 
 @app.route("/account/createtable", methods=["POST"])
 @login_required
 def account_createtable():
-    tablename = request.form.get("tablenumber")
-    tableid = DB.add_table(tablename, current_user.get_id())
-    new_url = BH.shorten_url(config.base_url + "newrequest/" + tableid)
-    DB.update_table(tableid, new_url)
-    return redirect(url_for('account'))
+    form = CreateTableForm(request.form)
+    if form.validate():
+        tableid = DB.add_table(form.tablenumber.data,current_user.get_id())
+        new_url = BH.shorten_url(config.base_url + "newrequest/" +tableid)
+        DB.update_table(tableid, new_url)
+        return redirect(url_for('account'))
+    return render_template("account.html", createtableform=form,tables=DB.get_tables(current_user.get_id()))
 
 @app.route("/newrequest/<tid>")
 def new_request(tid):
     DB.add_request(tid, datetime.datetime.now())
     return "Your request has been logged and a waiter will be with you shortly"
 
-# @app.route("/dashboard")
-# @login_required
-# def dashboard():
-#     return render_template("dashboard.html")
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -105,8 +109,7 @@ def dashboard_resolve():
 @login_required
 def account():
     tables = DB.get_tables(current_user.get_id())
-    return render_template("account.html", tables = tables)
-    # return render_template("account.html")
+    return render_template("account.html",createtableform=CreateTableForm(), tables=tables)
 
 @app.route("/account/deletetable")
 @login_required
